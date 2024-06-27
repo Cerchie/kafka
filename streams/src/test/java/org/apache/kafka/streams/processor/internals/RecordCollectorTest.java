@@ -29,6 +29,7 @@ import org.apache.kafka.common.Node;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.AuthenticationException;
+import org.apache.kafka.common.errors.InvalidPidMappingException;
 import org.apache.kafka.common.errors.InvalidProducerEpochException;
 import org.apache.kafka.common.errors.ProducerFencedException;
 import org.apache.kafka.common.errors.SerializationException;
@@ -56,11 +57,15 @@ import org.apache.kafka.streams.processor.TaskId;
 import org.apache.kafka.streams.processor.internals.metrics.StreamsMetricsImpl;
 import org.apache.kafka.test.InternalMockProcessorContext;
 import org.apache.kafka.test.MockClientSupplier;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.junit.MockitoJUnitRunner;
+
+import org.apache.log4j.Level;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -72,6 +77,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -86,15 +92,17 @@ import static org.apache.kafka.streams.processor.internals.metrics.StreamsMetric
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.IsEqual.equalTo;
 import static org.hamcrest.core.IsInstanceOf.instanceOf;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertThrows;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-@RunWith(MockitoJUnitRunner.StrictStubs.class)
+@ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.STRICT_STUBS)
 public class RecordCollectorTest {
 
     private final LogContext logContext = new LogContext("test ");
@@ -139,7 +147,7 @@ public class RecordCollectorTest {
 
     private RecordCollectorImpl collector;
 
-    @Before
+    @BeforeEach
     public void setup() {
         final MockClientSupplier clientSupplier = new MockClientSupplier();
         clientSupplier.setCluster(cluster);
@@ -166,7 +174,8 @@ public class RecordCollectorTest {
             emptyList(),
             emptyList(),
             emptyMap(),
-            emptySet()
+            emptySet(),
+            emptyMap()
         );
         collector = new RecordCollectorImpl(
             logContext,
@@ -178,7 +187,7 @@ public class RecordCollectorTest {
         );
     }
 
-    @After
+    @AfterEach
     public void cleanup() {
         collector.closeClean();
     }
@@ -331,7 +340,8 @@ public class RecordCollectorTest {
                 emptyList(),
                 emptyList(),
                 emptyMap(),
-                emptySet()
+                emptySet(),
+                emptyMap()
         );
         collector = new RecordCollectorImpl(
                 logContext,
@@ -398,7 +408,8 @@ public class RecordCollectorTest {
                 emptyList(),
                 emptyList(),
                 emptyMap(),
-                emptySet()
+                emptySet(),
+                emptyMap()
         );
         collector = new RecordCollectorImpl(
                 logContext,
@@ -465,7 +476,8 @@ public class RecordCollectorTest {
                 emptyList(),
                 emptyList(),
                 emptyMap(),
-                emptySet()
+                emptySet(),
+                emptyMap()
         );
         collector = new RecordCollectorImpl(
                 logContext,
@@ -544,7 +556,8 @@ public class RecordCollectorTest {
                 emptyList(),
                 emptyList(),
                 emptyMap(),
-                emptySet()
+                emptySet(),
+                emptyMap()
         );
         collector = new RecordCollectorImpl(
                 logContext,
@@ -597,7 +610,8 @@ public class RecordCollectorTest {
                 emptyList(),
                 emptyList(),
                 emptyMap(),
-                emptySet()
+                emptySet(),
+                emptyMap()
         );
         collector = new RecordCollectorImpl(
                 logContext,
@@ -647,7 +661,8 @@ public class RecordCollectorTest {
                 emptyList(),
                 emptyList(),
                 emptyMap(),
-                emptySet()
+                emptySet(),
+                emptyMap()
         );
         collector = new RecordCollectorImpl(
                 logContext,
@@ -712,7 +727,7 @@ public class RecordCollectorTest {
         collector.send(topic, "999", "0", null, 1, null, stringSerializer, stringSerializer, null, context);
         collector.send(topic, "999", "0", null, 2, null, stringSerializer, stringSerializer, null, context);
 
-        assertEquals(Collections.<TopicPartition, Long>emptyMap(), offsets);
+        assertEquals(Collections.emptyMap(), offsets);
 
         collector.flush();
 
@@ -744,7 +759,7 @@ public class RecordCollectorTest {
         final StreamsProducer streamsProducer = mock(StreamsProducer.class);
         when(streamsProducer.eosEnabled()).thenReturn(false);
         doNothing().when(streamsProducer).flush();
-
+        when(streamsProducer.sendException()).thenReturn(new AtomicReference<>(null));
         final ProcessorTopology topology = mock(ProcessorTopology.class);
         when(topology.sinkTopics()).thenReturn(Collections.emptySet());
 
@@ -764,6 +779,7 @@ public class RecordCollectorTest {
     public void shouldForwardFlushToStreamsProducerEosEnabled() {
         final StreamsProducer streamsProducer = mock(StreamsProducer.class);
         when(streamsProducer.eosEnabled()).thenReturn(true);
+        when(streamsProducer.sendException()).thenReturn(new AtomicReference<>(null));
         doNothing().when(streamsProducer).flush();
         final ProcessorTopology topology = mock(ProcessorTopology.class);
         
@@ -780,10 +796,71 @@ public class RecordCollectorTest {
     }
 
     @Test
+    public void shouldClearOffsetsOnCloseClean() {
+        shouldClearOffsetsOnClose(true);
+    }
+
+    @Test
+    public void shouldClearOffsetsOnCloseDirty() {
+        shouldClearOffsetsOnClose(false);
+    }
+
+    private void shouldClearOffsetsOnClose(final boolean clean) {
+        final StreamsProducer streamsProducer = mock(StreamsProducer.class);
+        when(streamsProducer.eosEnabled()).thenReturn(true);
+        when(streamsProducer.sendException()).thenReturn(new AtomicReference<>(null));
+        final long offset = 1234L;
+        final RecordMetadata metadata = new RecordMetadata(
+            new TopicPartition(topic, 0),
+            offset,
+            0,
+            0,
+            1,
+            1
+        );
+        when(streamsProducer.send(any(), any())).thenAnswer(invocation -> {
+            ((Callback) invocation.getArgument(1)).onCompletion(metadata, null);
+            return null;
+        });
+        final ProcessorTopology topology = mock(ProcessorTopology.class);
+
+        final RecordCollector collector = new RecordCollectorImpl(
+            logContext,
+            taskId,
+            streamsProducer,
+            productionExceptionHandler,
+            streamsMetrics,
+            topology
+        );
+        collector.send(
+            topic + "-changelog",
+            "key",
+            "value",
+            new RecordHeaders(),
+            0,
+            0L,
+            new StringSerializer(),
+            new StringSerializer(),
+            null,
+            null
+        );
+
+        assertFalse(collector.offsets().isEmpty());
+
+        if (clean) {
+            collector.closeClean();
+        } else {
+            collector.closeDirty();
+        }
+
+        assertTrue(collector.offsets().isEmpty());
+    }
+
+    @Test
     public void shouldNotAbortTxOnCloseCleanIfEosEnabled() {
         final StreamsProducer streamsProducer = mock(StreamsProducer.class);
         when(streamsProducer.eosEnabled()).thenReturn(true);
-        
+        when(streamsProducer.sendException()).thenReturn(new AtomicReference<>(null));
         final ProcessorTopology topology = mock(ProcessorTopology.class);
         
         final RecordCollector collector = new RecordCollectorImpl(
@@ -802,8 +879,8 @@ public class RecordCollectorTest {
     public void shouldAbortTxOnCloseDirtyIfEosEnabled() {
         final StreamsProducer streamsProducer = mock(StreamsProducer.class);
         when(streamsProducer.eosEnabled()).thenReturn(true);
+        when(streamsProducer.sendException()).thenReturn(new AtomicReference<>(null));
         doNothing().when(streamsProducer).abortTransaction();
-        
         final ProcessorTopology topology = mock(ProcessorTopology.class);
         
         final RecordCollector collector = new RecordCollectorImpl(
@@ -987,6 +1064,11 @@ public class RecordCollectorTest {
     }
 
     @Test
+    public void shouldThrowTaskMigratedExceptionOnSubsequentSendWhenInvalidPidMappingInCallback() {
+        testThrowTaskMigratedExceptionOnSubsequentSend(new InvalidPidMappingException("KABOOM!"));
+    }
+
+    @Test
     public void shouldThrowTaskMigratedExceptionOnSubsequentSendWhenInvalidEpochInCallback() {
         testThrowTaskMigratedExceptionOnSubsequentSend(new InvalidProducerEpochException("KABOOM!"));
     }
@@ -1017,6 +1099,11 @@ public class RecordCollectorTest {
     }
 
     @Test
+    public void shouldThrowTaskMigratedExceptionOnSubsequentFlushWhenInvalidPidMappingInCallback() {
+        testThrowTaskMigratedExceptionOnSubsequentFlush(new InvalidPidMappingException("KABOOM!"));
+    }
+
+    @Test
     public void shouldThrowTaskMigratedExceptionOnSubsequentFlushWhenInvalidEpochInCallback() {
         testThrowTaskMigratedExceptionOnSubsequentFlush(new InvalidProducerEpochException("KABOOM!"));
     }
@@ -1041,6 +1128,11 @@ public class RecordCollectorTest {
     @Test
     public void shouldThrowTaskMigratedExceptionOnSubsequentCloseWhenProducerFencedInCallback() {
         testThrowTaskMigratedExceptionOnSubsequentClose(new ProducerFencedException("KABOOM!"));
+    }
+
+    @Test
+    public void shouldThrowTaskMigratedExceptionOnSubsequentCloseWhenInvalidPidMappingInCallback() {
+        testThrowTaskMigratedExceptionOnSubsequentClose(new InvalidPidMappingException("KABOOM!"));
     }
 
     @Test
@@ -1228,6 +1320,7 @@ public class RecordCollectorTest {
 
         try (final LogCaptureAppender logCaptureAppender =
                  LogCaptureAppender.createAndRegister(RecordCollectorImpl.class)) {
+            logCaptureAppender.setThreshold(Level.INFO);
 
             collector.send(topic, "3", "0", null, null, stringSerializer, stringSerializer, null, null, streamPartitioner);
             collector.flush();
@@ -1237,11 +1330,9 @@ public class RecordCollectorTest {
             for (final String error : messages) {
                 errorMessage.append("\n - ").append(error);
             }
-            assertTrue(
-                errorMessage.toString(),
-                messages.get(messages.size() - 1)
-                    .endsWith("Exception handler choose to CONTINUE processing in spite of this error but written offsets would not be recorded.")
-            );
+            assertTrue(messages.get(messages.size() - 1)
+                    .endsWith("Exception handler choose to CONTINUE processing in spite of this error but written offsets would not be recorded."),
+                errorMessage.toString());
         }
 
         final Metric metric = streamsMetrics.metrics().get(new MetricName(
@@ -1426,6 +1517,64 @@ public class RecordCollectorTest {
 
             assertThat(error.getCause(), instanceOf(ClassCastException.class));
         }
+    }
+
+    @Test
+    public void shouldNotSendIfSendOfOtherTaskFailedInCallback() {
+        final TaskId taskId1 = new TaskId(0, 0);
+        final TaskId taskId2 = new TaskId(0, 1);
+        final StreamsProducer streamsProducer = mock(StreamsProducer.class);
+        when(streamsProducer.eosEnabled()).thenReturn(true);
+        when(streamsProducer.sendException()).thenReturn(new AtomicReference<>(null));
+        when(streamsProducer.send(any(), any())).thenAnswer(
+            invocation -> {
+                final Callback callback = invocation.getArgument(1);
+                callback.onCompletion(null, new ProducerFencedException("KABOOM!"));
+                return null;
+            }
+        );
+        final RecordCollector collector1 = new RecordCollectorImpl(
+            logContext,
+            taskId1,
+            streamsProducer,
+            productionExceptionHandler,
+            streamsMetrics,
+            topology
+        );
+        collector1.initialize();
+        final RecordCollector collector2 = new RecordCollectorImpl(
+            logContext,
+            taskId2,
+            streamsProducer,
+            productionExceptionHandler,
+            streamsMetrics,
+            topology
+        );
+        collector2.initialize();
+        collector1.send(
+            topic,
+            "key",
+            "val",
+            null,
+            0,
+            null,
+            stringSerializer,
+            stringSerializer,
+            sinkNodeName,
+            context
+        );
+        assertThrows(StreamsException.class, () -> collector2.send(
+            topic,
+            "key",
+            "val",
+            null,
+            1,
+            null,
+            stringSerializer,
+            stringSerializer,
+            sinkNodeName,
+            context
+        ));
     }
 
     private RecordCollector newRecordCollector(final ProductionExceptionHandler productionExceptionHandler) {

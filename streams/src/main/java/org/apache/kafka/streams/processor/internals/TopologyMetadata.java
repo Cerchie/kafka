@@ -22,6 +22,7 @@ import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.internals.KafkaFutureImpl;
 import org.apache.kafka.common.utils.LogContext;
 import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.TopologyConfig.TaskConfig;
 import org.apache.kafka.streams.errors.TopologyException;
 import org.apache.kafka.streams.errors.UnknownTopologyException;
 import org.apache.kafka.streams.internals.StreamsConfigUtils;
@@ -29,8 +30,10 @@ import org.apache.kafka.streams.internals.StreamsConfigUtils.ProcessingMode;
 import org.apache.kafka.streams.processor.StateStore;
 import org.apache.kafka.streams.processor.TaskId;
 import org.apache.kafka.streams.processor.internals.InternalTopologyBuilder.TopicsInfo;
-import org.apache.kafka.streams.TopologyConfig.TaskConfig;
 import org.apache.kafka.streams.processor.internals.namedtopology.NamedTopology;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -55,9 +58,6 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import static java.util.Collections.emptySet;
 
@@ -521,6 +521,10 @@ public class TopologyMetadata {
         return lookupBuilderForNamedTopology(topologyName).stateStoreNameToFullSourceTopicNames();
     }
 
+    public Set<String> stateStoreNamesForSubtopology(final String topologyName, final int subtopologyId) {
+        return lookupBuilderForNamedTopology(topologyName).stateStoreNamesForSubtopology(subtopologyId);
+    }
+
     public Map<String, List<String>> stateStoreNameToSourceTopics() {
         final Map<String, List<String>> stateStoreNameToSourceTopics = new HashMap<>();
         applyToEachBuilder(b -> stateStoreNameToSourceTopics.putAll(b.stateStoreNameToFullSourceTopicNames()));
@@ -646,7 +650,7 @@ public class TopologyMetadata {
         }
     }
 
-    public static class Subtopology {
+    public static class Subtopology implements Comparable<Subtopology> {
         final int nodeGroupId;
         final String namedTopology;
 
@@ -671,6 +675,22 @@ public class TopologyMetadata {
         @Override
         public int hashCode() {
             return Objects.hash(nodeGroupId, namedTopology);
+        }
+
+        @Override
+        public int compareTo(final Subtopology other) {
+            if (nodeGroupId != other.nodeGroupId) {
+                return Integer.compare(nodeGroupId, other.nodeGroupId);
+            }
+            if (namedTopology == null) {
+                return other.namedTopology == null ? 0 : -1;
+            }
+            if (other.namedTopology == null) {
+                return 1;
+            }
+
+            // Both not null
+            return namedTopology.compareTo(other.namedTopology);
         }
     }
 }

@@ -20,9 +20,9 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.utils.Time;
-import org.apache.kafka.streams.errors.TaskCorruptedException;
 import org.apache.kafka.streams.errors.LockException;
 import org.apache.kafka.streams.errors.StreamsException;
+import org.apache.kafka.streams.errors.TaskCorruptedException;
 import org.apache.kafka.streams.processor.StateStore;
 import org.apache.kafka.streams.processor.TaskId;
 
@@ -161,6 +161,17 @@ public interface Task {
      * Close the task except the state, so that the states can be later recycled
      */
     void prepareRecycle();
+
+    /**
+     * Resumes polling in the main consumer for all partitions for which
+     * the corresponding record queues have capacity (again).
+     */
+    void resumePollingForPartitionsWithAvailableSpace();
+
+    /**
+     * Fetches up-to-date lag information from the consumer.
+     */
+    void updateLags();
 
     // runtime methods (using in RUNNING state)
 
